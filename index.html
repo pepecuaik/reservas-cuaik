@@ -93,7 +93,7 @@ select.prop-select{border:1px solid var(--line);background:var(--surface);border
 .res-bars{margin-top:4px;display:flex;flex-direction:column;gap:2px;}
 .res-bar{font-size:9.5px;color:#fff;padding:2px 5px;border-radius:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;}
 .res-dot-row{display:flex;gap:3px;margin-top:4px;flex-wrap:wrap;}
-.res-dot{width:7px;height:7px;border-radius:50%;}
+.res-chip{font-size:7.5px;font-weight:700;color:#fff;border-radius:4px;padding:1.5px 3px;line-height:1.3;letter-spacing:0.2px;cursor:pointer;}
 
 /* List view */
 .list-view{display:flex;flex-direction:column;gap:10px;}
@@ -215,12 +215,24 @@ const resRef = ref(db, "reservations");
 
 /* ---------------- Data ---------------- */
 const FAMILIES = [
-  { id:"pap", name:"Papá",     spouse:"Teresa Rivera Torres", pin:"PAP", color:"#B0532F" },
-  { id:"pep", name:"Pepe",     spouse:"Carla Braun",          pin:"PEP", color:"#2A6F97" },
-  { id:"die", name:"Diego",    spouse:"Lorenza Bernot",       pin:"DIE", color:"#4C8C5F" },
-  { id:"san", name:"Santiago", spouse:"Ximena Urquiza",       pin:"SAN", color:"#7B5EA7" },
-  { id:"ter", name:"Tere",     spouse:"Beto (Alberto Siman)", pin:"TER", color:"#C1447E" },
+  { id:"pap", label:"Papá y Mamá",  pin:"PAP", color:"#B0532F" },
+  { id:"pep", label:"Pepe y Car",   pin:"PEP", color:"#2A6F97" },
+  { id:"die", label:"Diego y Lore", pin:"DIE", color:"#4C8C5F" },
+  { id:"san", label:"Papu y Xime",  pin:"SAN", color:"#7B5EA7" },
+  { id:"ter", label:"Beto y Tere",  pin:"TER", color:"#C1447E" },
 ];
+const OTHER_COLOR = "#8A8F98";
+
+function famLabel(r){ return r.familyId==="otros" ? (r.customName||"Otros") : famById[r.familyId].label; }
+function famColor(r){ return r.familyId==="otros" ? OTHER_COLOR : famById[r.familyId].color; }
+function famPin(r){ return r.familyId==="otros" ? (r.customName||"").replace(/\s+/g,"").slice(0,3).toUpperCase() : famById[r.familyId].pin; }
+function computeInitials(label){
+  const parts = label.split(/\s+y\s+/i);
+  if(parts.length===2 && parts[0].trim() && parts[1].trim()){
+    return parts[0].trim()[0].toUpperCase() + "y" + parts[1].trim()[0].toUpperCase();
+  }
+  return label.replace(/\s+/g,"").slice(0,3).toUpperCase();
+}
 
 const PROPERTIES = [
   { id:"trebol",          name:"Rancho El Trébol" },
@@ -363,7 +375,7 @@ function updateConnBadge(){
 /* ---------------- UI: static selects ---------------- */
 function buildWhoSelect(){
   const sel = document.getElementById("whoSelect");
-  sel.innerHTML = FAMILIES.map(f=>`<option value="${f.id}" ${f.id===whoId?"selected":""}>${f.name} y ${f.spouse.split(" ")[0]}</option>`).join("");
+  sel.innerHTML = FAMILIES.map(f=>`<option value="${f.id}" ${f.id===whoId?"selected":""}>${f.label}</option>`).join("");
   sel.onchange = ()=>{ whoId = sel.value; localStorage.setItem("cuaik_who", whoId); paintWhoDot(); };
   paintWhoDot();
 }
@@ -379,7 +391,8 @@ function buildPropSelect(){
 }
 function buildLegend(){
   const el = document.getElementById("legend");
-  el.innerHTML = FAMILIES.map(f=>`<div class="legend-item"><span class="legend-swatch" style="background:${f.color}"></span>${f.name}</div>`).join("") +
+  el.innerHTML = FAMILIES.map(f=>`<div class="legend-item"><span class="legend-swatch" style="background:${f.color}"></span>${f.label}</div>`).join("") +
+    `<div class="legend-item"><span class="legend-swatch" style="background:${OTHER_COLOR}"></span>Otros</div>` +
     `<div class="legend-item"><span class="legend-swatch" style="background:var(--holiday-strong)"></span>Feriado oficial</div>` +
     `<div class="legend-item"><span class="legend-swatch" style="background:var(--puente)"></span>Puente</div>` +
     `<div class="legend-item"><span class="legend-swatch" style="background:${TURNO_COLORS.puertoaventuras}"></span>Turno Puerto Aventuras</div>` +
@@ -476,11 +489,14 @@ function renderCalendar(){
       if(selectedProp === "all"){
         const dotRow = document.createElement("div");
         dotRow.className = "res-dot-row";
-        dayRes.slice(0,8).forEach(r=>{
-          const dot = document.createElement("span");
-          dot.className = "res-dot";
-          dot.style.background = famById[r.familyId].color;
-          dotRow.appendChild(dot);
+        dayRes.slice(0,6).forEach(r=>{
+          const chip = document.createElement("span");
+          chip.className = "res-chip";
+          chip.style.background = famColor(r);
+          chip.textContent = computeInitials(famLabel(r));
+          chip.title = famLabel(r);
+          chip.onclick = (e)=>{ e.stopPropagation(); openDetailModal(r); };
+          dotRow.appendChild(chip);
         });
         cell.appendChild(dotRow);
       } else {
@@ -489,8 +505,8 @@ function renderCalendar(){
         dayRes.slice(0,3).forEach(r=>{
           const bar = document.createElement("div");
           bar.className = "res-bar";
-          bar.style.background = famById[r.familyId].color;
-          bar.textContent = famById[r.familyId].name + (dayRes.length>1?" 🤝":"");
+          bar.style.background = famColor(r);
+          bar.textContent = famLabel(r) + (dayRes.length>1?" 🤝":"");
           bar.onclick = (e)=>{ e.stopPropagation(); openDetailModal(r); };
           barsWrap.appendChild(bar);
         });
@@ -520,17 +536,16 @@ function renderList(){
   }
   wrap.innerHTML = "";
   all.forEach(r=>{
-    const fam = famById[r.familyId];
     const prop = propById[r.property];
     const shared = reservationsForProperty(r.property).filter(o=>o.id!==r.id && overlaps(parseISO(o.start),parseISO(o.end),parseISO(r.start),parseISO(r.end)));
     const item = document.createElement("div");
     item.className = "list-item";
     item.innerHTML = `
-      <div class="list-color" style="background:${fam.color}"></div>
+      <div class="list-color" style="background:${famColor(r)}"></div>
       <div class="list-info">
         <div class="list-prop">${prop.name} ${shared.length?'<span class="shared-badge">Compartida</span>':''}</div>
         <div class="list-dates">${fmtRange(r.start,r.end)}</div>
-        <div class="list-family">${fam.name} y ${fam.spouse.split(" ")[0]}</div>
+        <div class="list-family">${famLabel(r)}</div>
       </div>`;
     item.onclick = ()=>openDetailModal(r);
     wrap.appendChild(item);
@@ -566,7 +581,8 @@ function openNewResModal(prefDate, prefProp){
   overlay.onclick = (e)=>{ if(e.target===overlay) closeModal(); };
 
   const propOptions = PROPERTIES.map(p=>`<option value="${p.id}" ${p.id===prefProp?"selected":""}>${p.name}</option>`).join("");
-  const famOptions = FAMILIES.map(f=>`<option value="${f.id}" ${f.id===whoId?"selected":""}>${f.name} y ${f.spouse.split(" ")[0]}</option>`).join("");
+  const famOptions = FAMILIES.map(f=>`<option value="${f.id}" ${f.id===whoId?"selected":""}>${f.label}</option>`).join("") +
+    `<option value="otros">Otros (prestado / rentado)</option>`;
 
   overlay.innerHTML = `
     <div class="modal">
@@ -580,6 +596,10 @@ function openNewResModal(prefDate, prefProp){
       <div class="field">
         <label>Familia que reserva</label>
         <select id="fFam">${famOptions}</select>
+      </div>
+      <div class="field" id="customNameField" style="display:none;">
+        <label>Nombre (ej. Javier — renta, o Javier — prestado)</label>
+        <input type="text" id="fCustomName" placeholder="Escribe el nombre">
       </div>
       <div class="field-row">
         <div class="field">
@@ -601,21 +621,27 @@ function openNewResModal(prefDate, prefProp){
   document.getElementById("cancelBtn").onclick = closeModal;
   document.getElementById("saveBtn").onclick = ()=>attemptSave(false);
 
+  const fFamSel = document.getElementById("fFam");
+  const customField = document.getElementById("customNameField");
+  fFamSel.onchange = ()=>{ customField.style.display = fFamSel.value==="otros" ? "" : "none"; };
+
   function attemptSave(forceShare){
     const property = document.getElementById("fProp").value;
     const familyId = document.getElementById("fFam").value;
+    const customName = document.getElementById("fCustomName").value.trim();
     const start = document.getElementById("fStart").value;
     const end = document.getElementById("fEnd").value || start;
     const slot = document.getElementById("conflictSlot");
     slot.innerHTML = "";
 
+    if(familyId==="otros" && !customName){ slot.innerHTML = `<div class="error-msg">Escribe el nombre de quién va a usar la propiedad.</div>`; return; }
     if(!start){ slot.innerHTML = `<div class="error-msg">Elige al menos la fecha de llegada.</div>`; return; }
     if(parseISO(end) < parseISO(start)){ slot.innerHTML = `<div class="error-msg">La salida no puede ser antes de la llegada.</div>`; return; }
 
     const conflicts = reservationsForProperty(property).filter(r=> overlaps(parseISO(r.start),parseISO(r.end),parseISO(start),parseISO(end)) && r.familyId!==familyId);
 
     if(conflicts.length && !forceShare){
-      const names = [...new Set(conflicts.map(c=>famById[c.familyId].name))].join(", ");
+      const names = [...new Set(conflicts.map(c=>famLabel(c)))].join(", ");
       slot.innerHTML = `
         <div class="conflict-box">
           <strong>${propById[property].name}</strong> ya tiene una reserva de <strong>${names}</strong> que se cruza con esas fechas.
@@ -630,7 +656,9 @@ function openNewResModal(prefDate, prefProp){
       return;
     }
 
-    push(resRef, { property, familyId, start, end, createdAt: Date.now(), createdBy: whoId });
+    const payload = { property, familyId, start, end, createdAt: Date.now(), createdBy: whoId };
+    if(familyId==="otros") payload.customName = customName;
+    push(resRef, payload);
     closeModal();
     toast("Reserva guardada ✓");
   }
@@ -638,7 +666,8 @@ function openNewResModal(prefDate, prefProp){
 
 function openDetailModal(r){
   closeModal();
-  const fam = famById[r.familyId];
+  const label = famLabel(r);
+  const pin = famPin(r);
   const prop = propById[r.property];
   const overlay = document.createElement("div");
   overlay.className = "overlay";
@@ -647,11 +676,11 @@ function openDetailModal(r){
     <div class="modal">
       <button class="modal-close" id="closeBtn2">✕</button>
       <h2>${prop.name}</h2>
-      <div class="detail-row"><span>Familia</span><span>${fam.name} y ${fam.spouse.split(" ")[0]}</span></div>
+      <div class="detail-row"><span>Familia</span><span>${label}</span></div>
       <div class="detail-row"><span>Fechas</span><span>${fmtRange(r.start,r.end)}</span></div>
       <div class="field" style="margin-top:16px;">
         <label>PIN para cancelar (3 letras)</label>
-        <input type="text" id="pinInput" maxlength="3" placeholder="Ej. ${fam.pin}" style="text-transform:uppercase;">
+        <input type="text" id="pinInput" maxlength="3" placeholder="Ej. ${pin}" style="text-transform:uppercase;">
       </div>
       <div id="pinError"></div>
       <div class="modal-actions">
@@ -663,8 +692,8 @@ function openDetailModal(r){
   document.getElementById("closeBtn2").onclick = closeModal;
   document.getElementById("closeBtn3").onclick = closeModal;
   document.getElementById("delBtn").onclick = ()=>{
-    const pin = document.getElementById("pinInput").value.trim().toUpperCase();
-    if(pin !== fam.pin){
+    const entered = document.getElementById("pinInput").value.trim().toUpperCase();
+    if(entered !== pin){
       document.getElementById("pinError").innerHTML = `<div class="error-msg">PIN incorrecto.</div>`;
       return;
     }
